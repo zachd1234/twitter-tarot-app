@@ -29,3 +29,4 @@ To set up the Twitter Personality project on your local machine, follow these st
 Refer to the `.env.example` file for a complete list of required environment variables.
 
 Example `.env.local` file content (replace with your actual values):
+# twitter-tarot-app
