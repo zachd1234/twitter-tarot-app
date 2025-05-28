@@ -21,6 +21,11 @@ const nextConfig = {
         hostname: 'pbs.twimg.com',
         pathname: '**',
       },
+      {
+        protocol: 'https',
+        hostname: 'uvdxvgggjphy9pqb.public.blob.vercel-storage.com',
+        pathname: '**',
+      },
     ],
   },
   // typescript: {

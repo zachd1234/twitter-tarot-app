@@ -28,10 +28,21 @@ const NewUsernameForm = () => {
   })
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const cleanedUsername = cleanUsername(values.username)
-    const response = await handleNewUsername({ username: cleanedUsername, redirectPath: `/${cleanedUsername}` })
+    try {
+      console.log('🚀 Form submitted with values:', values)
+      const cleanedUsername = cleanUsername(values.username)
+      console.log('🧹 Cleaned username:', cleanedUsername)
+      
+      const response = await handleNewUsername({ username: cleanedUsername, redirectPath: `/${cleanedUsername}` })
+      console.log('📝 Response from handleNewUsername:', response)
 
-    if (response?.error) {
+      if (response?.error) {
+        console.log('❌ Error in response, redirecting to waitlist')
+        window.location.href = 'https://tally.so/r/3lRoOp'
+      }
+    } catch (error) {
+      console.error('❌ Error in form submission:', error)
+      // Show error to user or redirect to waitlist
       window.location.href = 'https://tally.so/r/3lRoOp'
     }
   }
@@ -61,20 +72,19 @@ const NewUsernameForm = () => {
                     <Input
                       disabled={form.formState.isSubmitting}
                       className="w-full rounded-l-sm rounded-r-none border-black"
-                      placeholder="@username"
+                      placeholder="@yourhandle"
                       {...field}
                     />
                     <Button
                       disabled={form.formState.isSubmitting}
                       type="submit"
                       className="flex-center gap-2 rounded-l-none rounded-r-sm">
-                      <PiFlame />
-                      Discover
+                      🔮 Read My Cards
                     </Button>
                   </div>
                 </FormControl>
                 <p className="text-xs">
-                  by clicking discover you agree to our{' '}
+                  by clicking, you summon the cards and agree to our{' '}
                   <a
                     className="underline-offset-4 hover:underline"
                     href="/terms">
@@ -91,7 +101,7 @@ const NewUsernameForm = () => {
       {form.formState.isSubmitting && (
         <div className="flex items-center gap-2 text-sm">
           <PiSpinner className="animate-spin" />
-          Looking for your X profile...
+          Summoning the mystical forces...
         </div>
       )}
     </div>

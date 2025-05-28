@@ -1,10 +1,8 @@
-import { Suspense } from 'react'
 import { notFound, redirect } from 'next/navigation'
 import { Metadata } from 'next/types'
+import Image from 'next/image'
 
 import { siteMetadata } from '@/app/metadata'
-import NewPairForm from '@/components/new-pair-form'
-import NewUsernameForm from '@/components/new-username-form'
 import { getUser } from '@/drizzle/queries'
 
 import { ProfileHighlight } from '../../components/analysis/profile-highlight'
@@ -26,27 +24,45 @@ const Page = async ({ params }: { params: { username: string } }) => {
   return (
     <div className="flex-center relative min-h-screen w-full flex-col gap-12 bg-[#F9FAFB] px-4 py-28 sm:px-12 md:px-28 md:pt-24">
       <Topbar />
-      <div className="flex-center flex-col gap-6">
-        <div className="text-center text-xl font-light">
-          Here&apos;s the <span className="font-medium">AI agent</span> analysis of your personality...
+      
+      {/* Header Section with Profile Picture */}
+      <div className="flex-center flex-col gap-8">
+        {/* Profile Picture - Large and Centered */}
+        <div className="flex-center">
+          {data.profilePicture ? (
+            <Image
+              src={data.profilePicture}
+              alt={`Profile picture of ${data.name}`}
+              className="h-32 w-32 rounded-full border-4 border-white shadow-lg object-cover"
+              width={128}
+              height={128}
+              priority
+            />
+          ) : (
+            <div className="h-32 w-32 rounded-full border-4 border-white shadow-lg bg-gray-200 flex items-center justify-center">
+              <span className="text-gray-500 text-lg">
+                {data.name?.charAt(0) || data.username.charAt(0)}
+              </span>
+            </div>
+          )}
         </div>
-        <ProfileHighlight user={data} />
+        
+        {/* User Info */}
+        <div className="flex-center flex-col gap-2 text-center">
+          <h1 className="text-2xl font-bold text-gray-900">{data.name}</h1>
+          <span className="text-lg text-gray-500">@{data.username}</span>
+          {data.location && (
+            <div className="text-gray-500">{data.location}</div>
+          )}
+        </div>
+        
+        {/* AI Message */}
+        <div className="text-center text-xl font-light">
+          The AI has spoken. Here&apos;s what it sees in your journey right now.
+        </div>
       </div>
 
       <ResultComponent user={data} />
-
-      <div className="flex-center container mx-auto flex-col space-y-4 px-4">
-        <div className="text-center text-2xl font-light">Try with your own profile</div>
-        <div className="flex-center flex-col space-y-6">
-          <div className="w-fit">
-            <Suspense>
-              <NewUsernameForm />
-            </Suspense>
-          </div>
-          <p>— or see how compatible you are with someone else 💞💼💍🚩🚀 —</p>
-          <NewPairForm />
-        </div>
-      </div>
     </div>
   )
 }
@@ -54,10 +70,25 @@ const Page = async ({ params }: { params: { username: string } }) => {
 export default Page
 
 export async function generateMetadata({ params, searchParams }: { params: { username?: string }; searchParams: { section?: string } }) {
-  if (!params.username) return notFound()
+  if (!params.username) return {
+    title: 'Twitter Personality Analysis by AI Agent',
+    description: 'AI-powered personality analysis from Twitter profiles.',
+  }
+  
   const user = await getUser({ username: params.username })
 
-  if (user == null) notFound()
+  // If user is not found, return basic metadata instead of calling notFound()
+  if (user == null) {
+    return {
+      title: `${params.username}'s Twitter Personality Analysis by AI Agent`,
+      description: `Check out ${params.username}'s analysis.`,
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+  
   const imageParams = new URLSearchParams()
 
   const name = user?.name || ''

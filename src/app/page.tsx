@@ -5,7 +5,6 @@ import { PiBrain, PiGithubLogo, PiXLogo } from 'react-icons/pi'
 // import Head from 'next/head'  // Import Head component for managing <head> elements
 
 import Quote from '@/app/quote'
-import NewPairFormBothNames from '@/components/new-pair-form-both-names'
 import NewUsernameForm from '@/components/new-username-form'
 import PHButton from '@/components/ph-button'
 import { Button } from '@/components/ui/button'
@@ -53,15 +52,12 @@ const Page = () => {
             <div>
               <div>
                 <h1 className="mb-8 text-4xl md:text-5xl 2xl:text-5xl">
-                  discover your <br />
-                  <div className="flex items-center gap-2">
-                    <PiXLogo className="min-w-[40px]" /> <span className="hidden md:block">twitter</span>
-                    <span
-                      className="bg-clip-text text-transparent"
-                      style={{ backgroundColor: '#CB9F9F' }}>
-                      personality
-                    </span>
-                  </div>
+                  🔮 Discover your <br />
+                  <span
+                    className="bg-clip-text text-transparent"
+                    style={{ backgroundColor: '#CB9F9F' }}>
+                    founder fate
+                  </span>
                 </h1>
 
                 <div className="mb-8 flex w-full flex-col pt-2">
@@ -71,40 +67,30 @@ const Page = () => {
                     </Suspense>
                   </div>
                 </div>
-
-                <div className="mb-8 flex w-full flex-col pt-2">
-                  <h1 className="mb-8 text-4xl md:text-5xl 2xl:text-5xl">
-                    or check
-                    <span
-                      className="bg-clip-text text-transparent"
-                      style={{ backgroundColor: '#6DB1BF' }}>
-                      {' '}
-                      compatibility
-                    </span>{' '}
-                  </h1>
-                  <div className="flex w-full items-center">
-                    <Suspense>
-                      <NewPairFormBothNames />
-                    </Suspense>
-                  </div>
-                </div>
               </div>
 
               <div className="mb-8 pt-8 text-base">
-                These are AI Agents built with{' '}
+                🧙‍♂️ These are AI Tarot Agents built with{' '}
                 <a
                   className="font-medium underline-offset-4 hover:underline"
                   target="_blank"
                   href="https://wordware.ai">
                   Wordware
                 </a>
-                , it will:
+                <br />
+                They will:
                 <ul className="mt-2 list-disc space-y-1 pl-8">
-                  <li>find Twitter accounts online</li>
-                  <li>will read your profile and tweets</li>
-                  <li>then it will use Large Language Models - like the ones in ChatGPT - to analyse your personality</li>
-                  <li>finally, it&apos;ll create a website with the analysis of your personality or compatibility</li>
+                  <li>Find your public Twitter presence</li>
+                  <li>Read your tweets and (if available) your website</li>
+                  <li>Use Large Language Models — like the ones behind ChatGPT — to interpret your founder energy</li>
+                  <li>Then, they&apos;ll reveal 3 tarot cards: your present, your challenge, and your future</li>
                 </ul>
+                <p className="mt-4">
+                  Each reading is poetic, symbolic, and eerily accurate
+                </p>
+                <p className="mt-2">
+                  You&apos;ll receive a mystical interpretation — ready to screenshot, share, or contemplate alone in the dark.
+                </p>
               </div>
             </div>
             <div className="grow" />

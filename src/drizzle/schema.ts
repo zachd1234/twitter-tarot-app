@@ -6,7 +6,7 @@ export const users = pgTable(
   {
     id: text('id')
       .primaryKey()
-      .default(sql`concat('usr_', uuid_generate_v4())`),
+      .default(sql`concat('usr_', gen_random_uuid())`),
     username: text('username').notNull().unique(),
     lowercaseUsername: text('lowercase_username').notNull().unique(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -49,7 +49,7 @@ export const pairs = pgTable(
   {
     id: text('id')
       .primaryKey()
-      .default(sql`concat('pair_', uuid_generate_v4())`),
+      .default(sql`concat('pair_', gen_random_uuid())`),
     user1lowercaseUsername: text('user1_lowercase_username')
       .notNull()
       .references(() => users.lowercaseUsername),

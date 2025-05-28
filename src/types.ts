@@ -40,6 +40,23 @@ export type TwitterAnalysis = {
   career?: string
   lifeSuggestion?: string
   emojis?: string
+  // Tarot card data
+  core_symbol?: string
+  core_card_name?: string
+  core_interpretation?: string
+  core_guidance?: string
+  obstacle_symbol?: string
+  obstacle_card_name?: string
+  obstacle_interpretation?: string
+  trajectory_symbol?: string
+  trajectory_card_name?: string
+  trajectory_interpretation?: string
+  image1_url?: string
+  image2_url?: string
+  image3_url?: string
+  image1_prompt?: string
+  image2_prompt?: string
+  image3_prompt?: string
 }
 
 export type CompatibilityAnalysis = {
