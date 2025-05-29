@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { processScrapedUser } from '@/actions/actions'
 import { SelectUser } from '@/drizzle/schema'
 import { PERSONALITY_PART1_PAYWALL, PERSONALITY_PART2_PAYWALL } from '@/lib/config'
 import { parsePartialJson } from '@/lib/parse-partial-json'
@@ -14,35 +13,157 @@ import { Steps, TwitterAnalysis } from '@/types'
  * @returns {Object} An object containing the analysis steps and results.
  */
 
-export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = false, forceScrape: boolean = false) => {
+export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = false) => {
   const [steps, setSteps] = useState<Steps>(initializeSteps(user))
   const [result, setResult] = useState<TwitterAnalysis | undefined>((user.analysis as TwitterAnalysis) || undefined)
+  const [currentUser, setCurrentUser] = useState<SelectUser>(user)
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now()) // Add timestamp for change detection
   const effectRan = useRef(false)
+  const pollingInterval = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     if (effectRan.current) return
     effectRan.current = true
 
-    const runAnalysis = async () => {
-      let tweetScrapeCompleted = user.tweetScrapeCompleted
+    console.log('🔍 useTwitterAnalysis initial state:', {
+      username: user.username,
+      wordwareCompleted: user.wordwareCompleted,
+      wordwareStarted: user.wordwareStarted,
+      disableAnalysis,
+      hasAnalysis: !!user.analysis,
+      analysisKeys: user.analysis ? Object.keys(user.analysis) : []
+    })
 
-      if (shouldRunTweetScrape(user)) {
-        tweetScrapeCompleted = await runTweetScrape(user, setSteps)
-      }
-      let currentResult: TwitterAnalysis | undefined = undefined
-
-      if (disableAnalysis) return
-      if (shouldRunWordwareAnalysis(user, tweetScrapeCompleted || false)) {
-        currentResult = (await runWordwareAnalysis(user, setSteps)) as TwitterAnalysis
-      }
-
-      if (shouldRunPaidWordwareAnalysis(user, result)) {
-        await runPaidWordwareAnalysis(user, setSteps, currentResult)
-      }
+    // Initialize result if analysis data is already available
+    if (user.analysis) {
+      console.log('✅ Analysis data already available, setting result:', user.analysis)
+      setResult(user.analysis as TwitterAnalysis)
     }
 
-    runAnalysis()
+    // Start polling if:
+    // 1. Analysis is not completed (wordwareCompleted is false)
+    // 2. OR we don't have analysis data yet
+    // 3. OR wordware is in progress (started but not completed)
+    const shouldStartPolling = !disableAnalysis && (
+      !user.wordwareCompleted || 
+      !user.analysis ||
+      (user.wordwareStarted && !user.wordwareCompleted)
+    )
+
+    // TEMPORARY: Force polling to always start for debugging
+    const forcePolling = !disableAnalysis
+    
+    console.log('🔍 Polling decision:', {
+      shouldStartPolling,
+      forcePolling,
+      wordwareCompleted: user.wordwareCompleted,
+      hasAnalysis: !!user.analysis,
+      wordwareStarted: user.wordwareStarted,
+      disableAnalysis,
+      conditions: {
+        notWordwareCompleted: !user.wordwareCompleted,
+        noAnalysis: !user.analysis,
+        inProgress: user.wordwareStarted && !user.wordwareCompleted
+      }
+    })
+
+    if (forcePolling) {
+      console.log('🔄 FORCE POLLING: Starting polling for user updates...')
+      startPolling()
+    } else {
+      console.log('❌ Polling not started - analysis already complete')
+    }
+
+    return () => {
+      if (pollingInterval.current) {
+        console.log('🧹 Cleaning up polling interval')
+        clearInterval(pollingInterval.current)
+      }
+    }
   }, [])
+
+  // Watch for changes in result and force re-render
+  useEffect(() => {
+    if (result) {
+      console.log('🔄 Result changed, forcing re-render with timestamp:', Date.now())
+      setLastUpdateTime(Date.now())
+    }
+  }, [result])
+
+  const startPolling = () => {
+    console.log('🔄 Starting polling for user updates...', user.username)
+    
+    pollingInterval.current = setInterval(async () => {
+      try {
+        console.log('📡 Polling for updates...', user.username)
+        const response = await fetch(`/api/user/${user.username}`)
+        if (response.ok) {
+          const updatedUser = await response.json()
+          console.log('📡 Received updated user:', {
+            username: updatedUser.username,
+            wordwareStarted: updatedUser.wordwareStarted,
+            wordwareCompleted: updatedUser.wordwareCompleted,
+            hasAnalysis: !!updatedUser.analysis,
+            analysisKeys: updatedUser.analysis ? Object.keys(updatedUser.analysis) : [],
+            fullAnalysis: updatedUser.analysis
+          })
+          
+          // More aggressive change detection - compare against result state instead of currentUser
+          const currentAnalysisString = result ? JSON.stringify(result) : 'null'
+          const newAnalysisString = updatedUser.analysis ? JSON.stringify(updatedUser.analysis) : 'null'
+          const hasNewAnalysis = newAnalysisString !== currentAnalysisString
+          const statusChanged = updatedUser.wordwareCompleted !== currentUser.wordwareCompleted || 
+                               updatedUser.wordwareStarted !== currentUser.wordwareStarted
+          
+          console.log('📡 Change detection:', {
+            hasNewAnalysis,
+            statusChanged,
+            currentAnalysisLength: currentAnalysisString.length,
+            newAnalysisLength: newAnalysisString.length,
+            currentWordwareCompleted: currentUser.wordwareCompleted,
+            newWordwareCompleted: updatedUser.wordwareCompleted
+          })
+          
+          // Always update currentUser state
+          setCurrentUser(updatedUser)
+          console.log('📡 Updated currentUser state')
+          
+          // Always update steps
+          const newSteps = initializeSteps(updatedUser)
+          setSteps(newSteps)
+          console.log('📡 Updated steps:', newSteps)
+          
+          // Update result and force re-render if there's any analysis data
+          if (updatedUser.analysis) {
+            console.log('📡 Setting analysis result from polling:', updatedUser.analysis)
+            // Always create a new object reference and update timestamp
+            setResult({ ...(updatedUser.analysis as TwitterAnalysis) })
+            setLastUpdateTime(Date.now()) // Always update timestamp to force re-render
+            console.log('📡 Force re-render with new timestamp:', Date.now())
+          }
+          
+          // Also force update if status changed but no analysis yet
+          if (statusChanged && !updatedUser.analysis) {
+            setLastUpdateTime(Date.now())
+            console.log('📡 Force re-render due to status change:', Date.now())
+          }
+          
+          // Stop polling if analysis is completed
+          if (updatedUser.wordwareCompleted) {
+            console.log('✅ Analysis completed, stopping polling')
+            if (pollingInterval.current) {
+              clearInterval(pollingInterval.current)
+              pollingInterval.current = null
+            }
+          }
+        } else {
+          console.error('❌ Polling response not ok:', response.status)
+        }
+      } catch (error) {
+        console.error('❌ Error polling for updates:', error)
+      }
+    }, 2000) // Poll every 2 seconds
+  }
 
   function initializeSteps(user: SelectUser): Steps {
     return {
@@ -96,19 +217,11 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
     }
   }
 
-  const shouldRunTweetScrape = (user: SelectUser): boolean => {
-    const isUnlocked = PERSONALITY_PART1_PAYWALL ? user.unlocked || false : true
-    return (
-      (forceScrape || isUnlocked) &&
-      (!user.tweetScrapeStarted || (!user.tweetScrapeCompleted && Date.now() - user.tweetScrapeStartedTime.getTime() > 1 * 60 * 1000))
-    )
-  }
-
-  const shouldRunWordwareAnalysis = (user: SelectUser, tweetScrapeCompleted: boolean): boolean => {
+  const shouldRunWordwareAnalysis = (user: SelectUser): boolean => {
     const unlockedCheck = PERSONALITY_PART1_PAYWALL ? user.unlocked || false : true
     return (
-      (unlockedCheck && tweetScrapeCompleted && !user.wordwareStarted) ||
-      (unlockedCheck && tweetScrapeCompleted && !user.wordwareCompleted && Date.now() - user.wordwareStartedTime.getTime() > 60 * 1000)
+      (unlockedCheck && !user.wordwareStarted) ||
+      (unlockedCheck && !user.wordwareCompleted && Date.now() - user.wordwareStartedTime.getTime() > 60 * 1000)
     )
   }
 
@@ -126,19 +239,6 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
     return unlockedCheck || verdict
   }
 
-  const runTweetScrape = async (user: SelectUser, setSteps: React.Dispatch<React.SetStateAction<Steps>>): Promise<boolean> => {
-    setSteps((prev) => ({ ...prev, tweetScrapeStarted: true }))
-    try {
-      await processScrapedUser({ username: user.username })
-      setSteps((prev) => ({ ...prev, tweetScrapeCompleted: true }))
-      return true
-    } catch (error) {
-      console.error('Error processing scraped user:', error)
-      window.location.href = 'https://tally.so/r/3lRoOp'
-      return false
-    }
-  }
-
   const runWordwareAnalysis = async (user: SelectUser, setSteps: React.Dispatch<React.SetStateAction<Steps>>) => {
     setSteps((prev) => ({ ...prev, wordwareStarted: true }))
     const result = await handleTweetAnalysis({ username: user.username, full: false })
@@ -152,5 +252,5 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
     setSteps((prev) => ({ ...prev, paidWordwareCompleted: true }))
   }
 
-  return { steps, result }
+  return { steps, result, currentUser, lastUpdateTime }
 }

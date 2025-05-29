@@ -37,21 +37,30 @@ interface WordwareResponse {
   }
   analysis: WordwareAnalysis
   IMG1: {
-    prompt: {
-      code: string
-      logs: string
-      error: string
-      output: string
-    }
-    'Image generation': {
-      output: {
-        type: 'image'
-        image_url: string
+    finalPrompt: string
+    'ImageGenHelper vertical': {
+      'Image generation': {
+        output: {
+          type: string
+          image_url: string
+        }
       }
     }
   }
   IMG2: {
-    prompt: {
+    finalPrompt: string
+    'ImageGenHelper vertical': {
+      'Image generation': {
+        output: {
+          type: string
+          image_url: string
+        }
+      }
+    }
+  }
+  Profile: {
+    finalPrompt: string
+    profilePrompt: {
       code: string
       logs: string
       error: string
@@ -59,36 +68,26 @@ interface WordwareResponse {
     }
     'Image generation': {
       output: {
-        type: 'image'
+        type: string
         image_url: string
       }
     }
   }
   IMG3: {
-    prompt: {
-      code: string
-      logs: string
-      error: string
-      output: string
-    }
-    'Image generation': {
-      output: {
-        type: 'image'
-        image_url: string
+    finalPrompt: string
+    'ImageGenHelper vertical': {
+      'Image generation': {
+        output: {
+          type: string
+          image_url: string
+        }
       }
     }
   }
-  Profile: {
-    new_code_block: {
-      code: string
-      logs: string
-      error: string
-      output: string
-    }
-  }
-  ProfilePicture: {
-    output: {
-      type: 'image'
+  Profile2: {
+    finalPrompt: string
+    'Image generation': {
+      type: string
       image_url: string
     }
   }
@@ -149,7 +148,7 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
         data: {
           type: 'runs',
           attributes: {
-            version: '1.0',
+            version: '6.3',
             inputs: {
               twitterHandle: twitterHandle
             },
@@ -221,6 +220,8 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
               
               // Handle different types of stream data
               if (data.type === 'value' && data.path && data.value !== undefined) {
+                console.log('🔍 Stream value received:', { path: data.path, value: data.value })
+                
                 // Set nested values using dot notation path
                 const pathParts = data.path.split('.')
                 let current = finalOutputs
@@ -241,6 +242,7 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
               
               // Handle outputs data
               if (data.type === 'outputs' && data.outputs) {
+                console.log('🔍 Outputs received:', JSON.stringify(data.outputs, null, 2))
                 finalOutputs = { ...finalOutputs, ...data.outputs }
               }
               
@@ -273,24 +275,69 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
     
     console.log('🔍 Final outputs:', JSON.stringify(finalOutputs, null, 2))
     
-    // Debug ProfilePicture specifically
-    console.log('🖼️ ProfilePicture debug:', JSON.stringify(finalOutputs.ProfilePicture, null, 2))
-    
     // Debug all image generation outputs
     console.log('🖼️ IMG1 debug:', JSON.stringify(finalOutputs.IMG1, null, 2))
     console.log('🖼️ IMG2 debug:', JSON.stringify(finalOutputs.IMG2, null, 2))
     console.log('🖼️ IMG3 debug:', JSON.stringify(finalOutputs.IMG3, null, 2))
+    console.log('🖼️ Profile debug:', JSON.stringify(finalOutputs.Profile, null, 2))
+    console.log('🖼️ Profile2 debug:', JSON.stringify(finalOutputs.Profile2, null, 2))
     
-    // Check if ProfilePicture might be nested differently
-    console.log('🖼️ All keys in finalOutputs:', Object.keys(finalOutputs))
+    // Enhanced image URL extraction with multiple fallback strategies
+    const extractImageUrl = (imgObj: any, imgName: string): string => {
+      if (!imgObj) {
+        console.log(`🖼️ ${imgName} object is null/undefined`)
+        return ''
+      }
+      
+      console.log(`🖼️ ${imgName} object structure:`, JSON.stringify(imgObj, null, 2))
+      
+      // Try multiple possible paths for image URLs (updated for current API structure)
+      const possiblePaths = [
+        // Current API structure - ImageGenHelper Card
+        imgObj?.['ImageGenHelper Card']?.['Image generation']?.image_url,
+        imgObj?.['ImageGenHelper Card']?.['Image generation']?.output?.image_url,
+        // Version 5.1 structure for IMG1, IMG2, IMG3
+        imgObj?.['ImageGenHelper vertical']?.['Image generation']?.output?.image_url,
+        imgObj?.['ImageGenHelper vertical']?.['Image generation']?.output?.type === 'image' ? imgObj?.['ImageGenHelper vertical']?.['Image generation']?.output?.image_url : null,
+        // Version 5.1 structure for Profile
+        imgObj?.['Image generation']?.output?.image_url,
+        imgObj?.['Image generation']?.output?.type === 'image' ? imgObj?.['Image generation']?.output?.image_url : null,
+        imgObj?.['Image generation']?.image_url,
+        imgObj?.['Image generation']?.type === 'image' ? imgObj?.['Image generation']?.image_url : null,
+        // Version 3.1 structure (fallback)
+        imgObj?.['ImageGenHelper vertical']?.['Image generation']?.image_url,
+        imgObj?.['ImageGenHelper vertical']?.['Image generation']?.output?.image_url,
+        // Original structure (fallback)
+        imgObj?.output?.image_url,
+        imgObj?.image_url,
+        imgObj?.url,
+        // For nested structures
+        imgObj?.generation?.output?.image_url,
+        imgObj?.generation?.image_url,
+        // Direct access if it's just a string
+        typeof imgObj === 'string' ? imgObj : null
+      ]
+      
+      console.log(`🖼️ ${imgName} trying paths:`, possiblePaths.map((path, i) => ({ index: i, value: path })))
+      
+      for (const path of possiblePaths) {
+        if (typeof path === 'string' && path.trim() && path.startsWith('http')) {
+          console.log(`🖼️ ${imgName} URL found via path:`, path)
+          return path
+        }
+      }
+      
+      console.log(`🖼️ ${imgName} URL not found in any expected path`)
+      return ''
+    }
     
-    // Try to find any field that might contain profile picture
+    // Try to find any field that might contain image URLs
     const allImageUrls: { path: string; url: string }[] = []
     const searchForImageUrls = (obj: any, path = ''): void => {
       if (typeof obj === 'object' && obj !== null) {
         for (const [key, value] of Object.entries(obj)) {
           const currentPath = path ? `${path}.${key}` : key
-          if (key === 'image_url' && typeof value === 'string' && value) {
+          if ((key === 'image_url' || key === 'url') && typeof value === 'string' && value.startsWith('http')) {
             allImageUrls.push({ path: currentPath, url: value })
           }
           if (typeof value === 'object') {
@@ -302,18 +349,13 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
     searchForImageUrls(finalOutputs)
     console.log('🖼️ All image URLs found:', allImageUrls)
     
-    // Try alternative extraction paths for ProfilePicture
-    const profilePictureUrl = 
-      finalOutputs.ProfilePicture?.output?.image_url ||
-      finalOutputs.ProfilePicture?.['Image generation']?.output?.image_url ||
-      finalOutputs.ProfilePicture?.['Image generation']?.image_url ||
-      finalOutputs['ProfilePicture']?.output?.image_url ||
-      // Try to find any image URL that might be the profile picture
-      (allImageUrls.length > 3 ? allImageUrls[3]?.url : '') ||
-      ''
+    // Extract image URLs using the enhanced function
+    const image1_url = extractImageUrl(finalOutputs.IMG1, 'IMG1')
+    const image2_url = extractImageUrl(finalOutputs.IMG2, 'IMG2') 
+    const image3_url = extractImageUrl(finalOutputs.IMG3, 'IMG3')
+    const profile_picture_url = extractImageUrl(finalOutputs.Profile, 'Profile') || extractImageUrl(finalOutputs.Profile2, 'Profile2')
     
-    console.log('🖼️ Extracted profile picture URL:', profilePictureUrl)
-    console.log('🖼️ ProfilePicture raw structure:', finalOutputs.ProfilePicture)
+    console.log('🖼️ Extracted image URLs:', { image1_url, image2_url, image3_url, profile_picture_url })
     
     // Extract each field as separate variables
     const extractedFields: ExtractedWordwareFields = {
@@ -336,19 +378,19 @@ export const callWordwareAPI = async ({ twitterHandle }: { twitterHandle: string
       trajectory_card_name: finalOutputs.analysis?.trajectory?.card_name || '',
       trajectory_interpretation: finalOutputs.analysis?.trajectory?.interpretation || '',
       
-      // Image URLs - Updated based on the correct structure
-      image1_url: finalOutputs.IMG1?.['Image generation']?.output?.image_url || '',
-      image2_url: finalOutputs.IMG2?.['Image generation']?.output?.image_url || '',
-      image3_url: finalOutputs.IMG3?.['Image generation']?.output?.image_url || '',
+      // Image URLs - Using enhanced extraction with fallbacks
+      image1_url: image1_url,
+      image2_url: image2_url,
+      image3_url: image3_url,
       
       // Image prompts
-      image1_prompt: finalOutputs.IMG1?.prompt?.output || '',
-      image2_prompt: finalOutputs.IMG2?.prompt?.output || '',
-      image3_prompt: finalOutputs.IMG3?.prompt?.output || '',
+      image1_prompt: finalOutputs.IMG1?.finalPrompt || '',
+      image2_prompt: finalOutputs.IMG2?.finalPrompt || '',
+      image3_prompt: finalOutputs.IMG3?.finalPrompt || '',
       
-      // Profile data
-      profile_output: finalOutputs.Profile?.new_code_block?.output || '',
-      profile_picture_url: profilePictureUrl,
+      // Profile data - now includes profile picture generation in version 5.1
+      profile_output: finalOutputs.Profile?.profilePrompt?.output || finalOutputs.Profile2?.finalPrompt || '',
+      profile_picture_url: profile_picture_url,
     }
 
     console.log('✅ Extracted fields:', extractedFields)
@@ -368,88 +410,93 @@ export const handleNewUsername = async ({ username, redirectPath }: { username: 
   try {
     console.log(`[${username}] 🔍 Starting handleNewUsername...`)
     
-    const user = await getUser({ username })
-    if (user) {
-      console.log(`[${username}] ✅ User already exists, redirecting...`)
-      if (redirectPath) {
-        redirect(redirectPath)
-      } else {
-        return { error: false, found: true }
-      }
-    }
-
-    console.log(`[${username}] 🔍 User not found, creating minimal profile...`)
+    let user = await getUser({ username })
     
-    // Create a minimal user profile without Twitter scraping
-    const newUser = {
-      username: username,
-      lowercaseUsername: username.toLowerCase(),
-      name: username, // Use username as display name
-      profilePicture: '', // Empty for now
-      description: '',
-      location: '',
-      url: '',
-      fullProfile: {},
-      followers: 0,
-      profileScraped: true,
-      error: null,
-    }
-    
-    try {
-      await insertUser({ user: newUser })
-      console.log(`[${username}] ✅ User created successfully`)
-    } catch (insertError) {
-      console.error(`[${username}] ❌ Failed to insert user:`, insertError)
-      throw new Error(`Failed to create user: ${insertError instanceof Error ? insertError.message : 'Unknown insert error'}`)
-    }
-    
-    // Call Wordware API to generate tarot reading
-    try {
-      console.log(`[${username}] 🔮 Generating tarot reading...`)
-      const tarotResult = await callWordwareAPI({ twitterHandle: username })
+    // If user doesn't exist, create them first
+    if (!user) {
+      console.log(`[${username}] 🔍 User not found, creating minimal profile...`)
       
-      if (tarotResult.data && !tarotResult.error) {
-        console.log(`[${username}] ✅ Tarot reading generated successfully`)
-        
-        // Update user with tarot data and profile picture
-        const updatedUser = await getUser({ username })
-        if (updatedUser) {
-          console.log(`[${username}] 🖼️ Profile picture URL from API:`, tarotResult.data.profile_picture_url)
-          await updateUser({
-            user: {
-              ...updatedUser,
-              profilePicture: tarotResult.data.profile_picture_url || updatedUser.profilePicture,
-              analysis: {
-                ...((updatedUser.analysis as any) || {}),
-                ...tarotResult.data,
-              },
-              wordwareStarted: true,
-              wordwareCompleted: true,
-            },
-          })
-          console.log(`[${username}] ✅ User updated with tarot data and profile picture`)
-        }
-      } else {
-        console.log(`[${username}] ⚠️ Tarot reading failed:`, tarotResult.error)
-        // Continue with redirect even if tarot generation fails
+      // Create a minimal user profile without Twitter scraping
+      const newUser = {
+        username: username,
+        lowercaseUsername: username.toLowerCase(),
+        name: username, // Use username as display name
+        profilePicture: '', // Empty for now
+        description: '',
+        location: '',
+        url: '',
+        fullProfile: {},
+        followers: 0,
+        profileScraped: true,
+        wordwareStarted: false, // Will be set to true when we start generation
+        wordwareStartedTime: new Date(),
+        error: null,
       }
-    } catch (tarotError) {
-      console.error(`[${username}] ❌ Tarot API error:`, tarotError)
-      // Continue with redirect even if tarot generation fails
+      
+      try {
+        await insertUser({ user: newUser })
+        console.log(`[${username}] ✅ User created successfully`)
+        user = await getUser({ username }) // Get the created user
+      } catch (insertError) {
+        console.error(`[${username}] ❌ Failed to insert user:`, insertError)
+        throw new Error(`Failed to create user: ${insertError instanceof Error ? insertError.message : 'Unknown insert error'}`)
+      }
+    }
+    
+    // Check if tarot reading is needed (user exists but no analysis completed)
+    if (user && !user.wordwareCompleted) {
+      console.log(`[${username}] 🔮 User exists but tarot reading not completed, generating...`)
+      
+      // Update user to mark wordware as started
+      await updateUser({
+        user: {
+          ...user,
+          wordwareStarted: true,
+          wordwareStartedTime: new Date(),
+        },
+      })
+      
+      // Call Wordware API to generate tarot reading and WAIT for it to complete
+      try {
+        console.log(`[${username}] 🔮 Generating tarot reading...`)
+        const tarotResult = await callWordwareAPI({ twitterHandle: username })
+        
+        if (tarotResult.data && !tarotResult.error) {
+          console.log(`[${username}] ✅ Tarot reading generated successfully`)
+          
+          // Update user with tarot data and profile picture from Wordware
+          const updatedUser = await getUser({ username })
+          if (updatedUser) {
+            console.log(`[${username}] ✅ Tarot reading data received, updating user`)
+            
+            await updateUser({
+              user: {
+                ...updatedUser,
+                profilePicture: tarotResult.data.profile_picture_url || updatedUser.profilePicture,
+                analysis: {
+                  ...((updatedUser.analysis as any) || {}),
+                  ...tarotResult.data,
+                },
+                wordwareStarted: true,
+                wordwareCompleted: true,
+              },
+            })
+            console.log(`[${username}] ✅ User updated with tarot data`)
+          }
+        } else {
+          console.log(`[${username}] ❌ Failed to generate tarot reading:`, tarotResult.error)
+        }
+      } catch (tarotError) {
+        console.error(`[${username}] ❌ Failed to generate tarot reading:`, tarotError)
+      }
+    } else if (user && user.wordwareCompleted) {
+      console.log(`[${username}] ✅ User exists and tarot reading already completed`)
     }
     
     console.log(`[${username}] ✅ Process completed successfully`)
-    if (redirectPath) {
-      redirect(redirectPath)
-    }
     return { error: false, found: true }
     
   } catch (mainError) {
-    // Don't catch NEXT_REDIRECT errors - let them propagate to handle redirects
-    if (mainError instanceof Error && mainError.message === 'NEXT_REDIRECT') {
-      throw mainError
-    }
-    
     console.error(`[${username}] ❌ Main error in handleNewUsername:`, mainError)
     return {
       data: null,
@@ -466,62 +513,8 @@ export const processScrapedUser = async ({ username }: { username: string }) => 
     throw new Error(`User ${username} not found`)
   }
 
-  // If tweets are already scraped, return them
-  if (user.tweetScrapeCompleted) {
-    return user.tweets
-  }
-
-  if (!user.tweetScrapeStarted || (!user.tweetScrapeCompleted && Date.now() - user.createdAt.getTime() > 3 * 60 * 1000)) {
-    user = {
-      ...user,
-      tweetScrapeStarted: true,
-      tweetScrapeStartedTime: new Date(),
-    }
-    await updateUser({ user })
-    let tweets
-    let error
-    const twitterUserID = (user.fullProfile as { twitterUserID?: string })?.twitterUserID ?? undefined
-
-    try {
-      const res = await scrapeTweets({ username, twitterUserID: twitterUserID })
-      tweets = res.data
-      error = res.error
-      if (!tweets) throw new Error('No tweets found')
-    } catch (e) {
-      error = e
-      console.warn(`[${username}] ⚠️ All 3 attemtps failed. Trying again...`, e)
-      try {
-        const res = await scrapeTweets({ username, twitterUserID: twitterUserID })
-        tweets = res.data
-        error = res.error
-        console.warn(`[${username}] ⚠️ All 6 attemtps failed.`, e)
-        if (!tweets) throw new Error('No tweets found')
-      } catch (e) {
-        console.warn(`[${username}] ⚠️ Yeah it's fucked:`, e)
-        throw e
-      }
-    }
-
-    if (tweets && !error) {
-      user = {
-        ...user,
-        tweets: tweets,
-        tweetScrapeCompleted: true,
-      }
-      await updateUser({ user })
-      return tweets
-    }
-    if (error) {
-      user = {
-        ...user,
-        error: JSON.stringify(error),
-      }
-
-      await updateUser({ user })
-    }
-  }
-
-  // Add your processing logic here
+  // Just return the user - no tweet scraping needed
+  console.log(`[${username}] ✅ Returning user data without tweet scraping`)
   return user
 }
 

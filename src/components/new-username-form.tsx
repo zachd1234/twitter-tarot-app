@@ -1,49 +1,78 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
-import { PiFlame, PiSpinner } from 'react-icons/pi'
-import { z } from 'zod'
+import { useState } from 'react'
+import { PiSpinner } from 'react-icons/pi'
 
-import { handleNewUsername } from '@/actions/actions'
 import { Button } from '@/components/ui/button'
-import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { cleanUsername } from '@/lib/utils'
 
-const formSchema = z.object({
-  username: z.string().min(2).max(50),
-})
-
 const NewUsernameForm = () => {
   const searchParams = useSearchParams()
+  const [username, setUsername] = useState(searchParams.get('u') || searchParams.get('username') || '')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  // Initialize form with react-hook-form and zod resolver
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      username: searchParams.get('u') || '',
-    },
-  })
+  console.log('🔧 NewUsernameForm component loaded')
+  console.log('🔧 Initial username value:', username)
+  console.log('🔧 Username length:', username.length)
+  console.log('🔧 Is submitting:', isSubmitting)
+  console.log('🔧 Button should be disabled:', isSubmitting || !username || username.length < 2)
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  const handleSubmit = async () => {
+    console.log('🚀 handleSubmit called with username:', username)
+    if (!username || username.length < 2) {
+      setError('Username must be at least 2 characters')
+      return
+    }
+    
+    setError('')
+    setIsSubmitting(true)
+    
+    console.log('🚀 Submitting with username:', username)
+    
     try {
-      console.log('🚀 Form submitted with values:', values)
-      const cleanedUsername = cleanUsername(values.username)
+      const cleanedUsername = cleanUsername(username)
       console.log('🧹 Cleaned username:', cleanedUsername)
       
-      const response = await handleNewUsername({ username: cleanedUsername, redirectPath: `/${cleanedUsername}` })
-      console.log('📝 Response from handleNewUsername:', response)
-
-      if (response?.error) {
-        console.log('❌ Error in response, redirecting to waitlist')
+      console.log('📡 Creating user...')
+      // First, create the user to ensure they exist before redirecting
+      const createResponse = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanedUsername })
+      })
+      
+      console.log('📡 Create response status:', createResponse.status)
+      
+      if (!createResponse.ok) {
+        const errorData = await createResponse.text()
+        console.error('❌ Failed to create user:', errorData)
         window.location.href = 'https://tally.so/r/3lRoOp'
+        return
       }
+      
+      const createResult = await createResponse.json()
+      console.log('✅ User created/exists:', createResult)
+      
+      // Now redirect immediately - user is guaranteed to exist
+      console.log('🔄 Redirecting to:', `/${cleanedUsername}`)
+      window.location.href = `/${cleanedUsername}`
+      
+      // Start the tarot generation in the background
+      fetch('/api/generate-reading', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanedUsername })
+      }).catch(error => {
+        console.error('❌ Background API error:', error)
+      })
+      
     } catch (error) {
       console.error('❌ Error in form submission:', error)
-      // Show error to user or redirect to waitlist
-      window.location.href = 'https://tally.so/r/3lRoOp'
+      setError('Something went wrong. Please try again.')
+      setIsSubmitting(false)
     }
   }
 
@@ -58,47 +87,52 @@ const NewUsernameForm = () => {
           Sign up for the Waitlist
         </a>
       </Button>
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="w-full max-w-sm space-y-8">
-          <FormField
-            control={form.control}
-            name="username"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <div className="flex items-center">
-                    <Input
-                      disabled={form.formState.isSubmitting}
-                      className="w-full rounded-l-sm rounded-r-none border-black"
-                      placeholder="@yourhandle"
-                      {...field}
-                    />
-                    <Button
-                      disabled={form.formState.isSubmitting}
-                      type="submit"
-                      className="flex-center gap-2 rounded-l-none rounded-r-sm">
-                      🔮 Read My Cards
-                    </Button>
-                  </div>
-                </FormControl>
-                <p className="text-xs">
-                  by clicking, you summon the cards and agree to our{' '}
-                  <a
-                    className="underline-offset-4 hover:underline"
-                    href="/terms">
-                    terms
-                  </a>
-                </p>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </form>
-      </Form>
-      {/* Display loading spinner when form is submitting or submission is successful */}
-      {form.formState.isSubmitting && (
+      
+      <div className="w-full max-w-sm space-y-8">
+        <div>
+          <div className="flex items-center">
+            <Input
+              disabled={isSubmitting}
+              className="w-full rounded-l-sm rounded-r-none border-black"
+              placeholder="@yourhandle"
+              value={username}
+              onChange={(e) => {
+                console.log('📝 Input changed to:', e.target.value)
+                setUsername(e.target.value)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleSubmit()
+                }
+              }}
+            />
+            <Button
+              disabled={isSubmitting || !username || username.length < 2}
+              type="button"
+              onClick={handleSubmit}
+              className="flex-center gap-2 rounded-l-none rounded-r-sm">
+              🔮 Read My Cards
+            </Button>
+          </div>
+          
+          {error && (
+            <p className="mt-2 text-sm text-red-600">{error}</p>
+          )}
+          
+          <p className="mt-2 text-xs">
+            by clicking, you summon the cards and agree to our{' '}
+            <a
+              className="underline-offset-4 hover:underline"
+              href="/terms">
+              terms
+            </a>
+          </p>
+        </div>
+      </div>
+      
+      {/* Display loading spinner when submitting */}
+      {isSubmitting && (
         <div className="flex items-center gap-2 text-sm">
           <PiSpinner className="animate-spin" />
           Summoning the mystical forces...

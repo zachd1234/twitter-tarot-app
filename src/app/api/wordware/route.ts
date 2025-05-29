@@ -48,9 +48,9 @@ export async function POST(request: Request) {
 *retweets: ${tweet.retweetCount ?? 0}, replies: ${tweet.replyCount ?? 0}, likes: ${tweet.likeCount ?? 0}, quotes: ${tweet.quoteCount ?? 0}, views: ${tweet.viewCount ?? 0}*`
   }
 
-  const tweets = user.tweets as TweetType[]
+  const tweets = (user.tweets as TweetType[]) || []
 
-  const tweetsMarkdown = tweets.map(formatTweet).join('\n---\n\n')
+  const tweetsMarkdown = tweets.length > 0 ? tweets.map(formatTweet).join('\n---\n\n') : 'No tweets available'
 
   const promptID = full ? process.env.WORDWARE_FULL_PROMPT_ID : process.env.WORDWARE_ROAST_PROMPT_ID
 
