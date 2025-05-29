@@ -6,7 +6,7 @@ import posthog from 'posthog-js'
 
 import { PriceButton } from '@/components/analysis/paywall-card'
 import { SelectUser } from '@/drizzle/schema'
-import { useSSETwitterAnalysis } from '@/hooks/use-sse-twitter-analysis'
+import { useTwitterAnalysis } from '@/hooks/use-twitter-analysis'
 import { PERSONALITY_PART2_PAYWALL } from '@/lib/config'
 import { TwitterAnalysis } from '@/types'
 
@@ -15,20 +15,45 @@ import { ProgressIndicator } from './progress-indicator'
 import FlipTarotCard from './flip-tarot-card'
 
 const ResultComponent = ({ user }: { user: SelectUser }) => {
-  const { steps, result, lastUpdateTime } = useSSETwitterAnalysis(user)
+  const renderTime = Date.now()
+  console.log('🔄 ResultComponent: Rendering at timestamp:', renderTime)
+  console.log('🔄 ResultComponent: Rendering with user:', {
+    username: user.username,
+    wordwareCompleted: user.wordwareCompleted,
+    wordwareStarted: user.wordwareStarted,
+    hasAnalysis: !!user.analysis,
+    analysisKeys: user.analysis ? Object.keys(user.analysis) : []
+  })
+
+  const { steps, result, lastUpdateTime, forceRenderCounter } = useTwitterAnalysis(user)
   const [forceRenderKey, setForceRenderKey] = useState(0)
   const searchParams = useSearchParams()
 
+  console.log('🔄 ResultComponent: Hook returned:', {
+    steps,
+    hasResult: !!result,
+    resultKeys: result ? Object.keys(result) : [],
+    lastUpdateTime,
+    forceRenderCounter
+  })
+
   const paywallFlag = posthog.getFeatureFlag('paywall2') ?? searchParams.get('stripe')
 
-  // Force re-render when lastUpdateTime changes
+  // Force re-render when lastUpdateTime OR forceRenderCounter changes
   useEffect(() => {
-    console.log('🔄 SSE: lastUpdateTime changed, forcing re-render:', lastUpdateTime)
+    console.log('🔄 POLLING: lastUpdateTime changed, forcing re-render:', lastUpdateTime, 'counter:', forceRenderCounter)
     setForceRenderKey(prev => prev + 1)
-  }, [lastUpdateTime])
+  }, [lastUpdateTime, forceRenderCounter])
 
   // Extract tarot card data from the analysis
-  const analysis = result || undefined
+  const analysis = result || (user.analysis as TwitterAnalysis) || undefined
+  
+  console.log('🔄 ResultComponent: Final analysis data:', {
+    fromResult: !!result,
+    fromUser: !!user.analysis,
+    finalAnalysis: !!analysis,
+    analysisKeys: analysis ? Object.keys(analysis) : []
+  })
   
   // Debug logging for image URLs
   console.log('🖼️ ResultComponent - Analysis data:', {
@@ -42,7 +67,7 @@ const ResultComponent = ({ user }: { user: SelectUser }) => {
   })
 
   return (
-    <div className="flex-center flex-col gap-8" key={`sse-${lastUpdateTime}-${forceRenderKey}`}>
+    <div className="flex-center flex-col gap-8" key={`polling-${lastUpdateTime}-${forceRenderCounter}-${forceRenderKey}`}>
       <ProgressIndicator
         steps={steps}
         result={result}
@@ -63,12 +88,12 @@ const ResultComponent = ({ user }: { user: SelectUser }) => {
       />
 
       {/* Tarot Cards Grid */}
-      <div className="w-full max-w-6xl" key={`cards-${forceRenderKey}`}>
+      <div className="w-full max-w-6xl" key={`cards-${forceRenderCounter}-${forceRenderKey}`}>
         {analysis && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Core Card */}
             <FlipTarotCard
-              key={`core-${lastUpdateTime}`}
+              key={`core-${lastUpdateTime}-${forceRenderCounter}`}
               title="Core"
               cardName={analysis.core_card_name || ''}
               interpretation={analysis.core_interpretation || ''}
@@ -78,7 +103,7 @@ const ResultComponent = ({ user }: { user: SelectUser }) => {
 
             {/* Obstacle Card */}
             <FlipTarotCard
-              key={`obstacle-${lastUpdateTime}`}
+              key={`obstacle-${lastUpdateTime}-${forceRenderCounter}`}
               title="Obstacle"
               cardName={analysis.obstacle_card_name || ''}
               interpretation={analysis.obstacle_interpretation || ''}
@@ -88,7 +113,7 @@ const ResultComponent = ({ user }: { user: SelectUser }) => {
 
             {/* Trajectory Card */}
             <FlipTarotCard
-              key={`trajectory-${lastUpdateTime}`}
+              key={`trajectory-${lastUpdateTime}-${forceRenderCounter}`}
               title="Trajectory"
               cardName={analysis.trajectory_card_name || ''}
               interpretation={analysis.trajectory_interpretation || ''}

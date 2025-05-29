@@ -12,10 +12,19 @@ export const useSSETwitterAnalysis = (user: SelectUser, disableAnalysis: boolean
   const effectRan = useRef(false)
 
   useEffect(() => {
-    if (effectRan.current || disableAnalysis) return
+    if (effectRan.current || disableAnalysis) {
+      console.log('🌊 SSE: Effect skipped', { effectRan: effectRan.current, disableAnalysis })
+      return
+    }
     effectRan.current = true
 
     console.log('🌊 SSE: Starting SSE connection for user:', user.username)
+    console.log('🌊 SSE: Initial user state:', {
+      username: user.username,
+      wordwareCompleted: user.wordwareCompleted,
+      wordwareStarted: user.wordwareStarted,
+      hasAnalysis: !!user.analysis
+    })
 
     // Initialize result if analysis data is already available
     if (user.analysis) {
@@ -24,18 +33,27 @@ export const useSSETwitterAnalysis = (user: SelectUser, disableAnalysis: boolean
       setLastUpdateTime(Date.now())
     }
 
+    // ALWAYS create EventSource connection for testing
+    console.log('🌊 SSE: FORCE CONNECTING - Testing SSE connection regardless of completion status')
+    
     // Create EventSource connection
-    const eventSource = new EventSource(`/api/user/${user.username}/stream`)
+    const streamUrl = `/api/user/${user.username}/stream`
+    console.log('🌊 SSE: Creating EventSource connection to:', streamUrl)
+    
+    const eventSource = new EventSource(streamUrl)
     eventSourceRef.current = eventSource
 
+    console.log('🌊 SSE: EventSource created, readyState:', eventSource.readyState)
+
     eventSource.onopen = () => {
-      console.log('🌊 SSE: Connection opened for', user.username)
+      console.log('🌊 SSE: Connection opened for', user.username, 'readyState:', eventSource.readyState)
     }
 
     eventSource.onmessage = (event) => {
       try {
+        console.log('🌊 SSE: Raw message received:', event.data)
         const data = JSON.parse(event.data)
-        console.log('🌊 SSE: Received message:', data)
+        console.log('🌊 SSE: Parsed message:', data)
 
         switch (data.type) {
           case 'connected':
@@ -104,6 +122,8 @@ export const useSSETwitterAnalysis = (user: SelectUser, disableAnalysis: boolean
 
     eventSource.onerror = (error) => {
       console.error('🌊 SSE: Connection error:', error)
+      console.error('🌊 SSE: EventSource readyState:', eventSource.readyState)
+      console.error('🌊 SSE: EventSource url:', eventSource.url)
       // Attempt to reconnect after a delay
       setTimeout(() => {
         if (!eventSourceRef.current || eventSourceRef.current.readyState === EventSource.CLOSED) {

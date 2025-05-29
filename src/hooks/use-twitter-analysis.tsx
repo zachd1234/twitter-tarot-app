@@ -18,6 +18,7 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
   const [result, setResult] = useState<TwitterAnalysis | undefined>((user.analysis as TwitterAnalysis) || undefined)
   const [currentUser, setCurrentUser] = useState<SelectUser>(user)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now()) // Add timestamp for change detection
+  const [forceRenderCounter, setForceRenderCounter] = useState<number>(0) // Force re-render counter
   const effectRan = useRef(false)
   const pollingInterval = useRef<NodeJS.Timeout | null>(null)
 
@@ -40,38 +41,10 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
       setResult(user.analysis as TwitterAnalysis)
     }
 
-    // Start polling if:
-    // 1. Analysis is not completed (wordwareCompleted is false)
-    // 2. OR we don't have analysis data yet
-    // 3. OR wordware is in progress (started but not completed)
-    const shouldStartPolling = !disableAnalysis && (
-      !user.wordwareCompleted || 
-      !user.analysis ||
-      (user.wordwareStarted && !user.wordwareCompleted)
-    )
-
-    // TEMPORARY: Force polling to always start for debugging
-    const forcePolling = !disableAnalysis
-    
-    console.log('🔍 Polling decision:', {
-      shouldStartPolling,
-      forcePolling,
-      wordwareCompleted: user.wordwareCompleted,
-      hasAnalysis: !!user.analysis,
-      wordwareStarted: user.wordwareStarted,
-      disableAnalysis,
-      conditions: {
-        notWordwareCompleted: !user.wordwareCompleted,
-        noAnalysis: !user.analysis,
-        inProgress: user.wordwareStarted && !user.wordwareCompleted
-      }
-    })
-
-    if (forcePolling) {
-      console.log('🔄 FORCE POLLING: Starting polling for user updates...')
+    // ALWAYS start polling for real-time updates (every 1 second)
+    if (!disableAnalysis) {
+      console.log('🔄 AGGRESSIVE POLLING: Starting 1-second polling for user updates...')
       startPolling()
-    } else {
-      console.log('❌ Polling not started - analysis already complete')
     }
 
     return () => {
@@ -91,7 +64,7 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
   }, [result])
 
   const startPolling = () => {
-    console.log('🔄 Starting polling for user updates...', user.username)
+    console.log('🔄 Starting aggressive polling for user updates...', user.username)
     
     pollingInterval.current = setInterval(async () => {
       try {
@@ -104,49 +77,30 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
             wordwareStarted: updatedUser.wordwareStarted,
             wordwareCompleted: updatedUser.wordwareCompleted,
             hasAnalysis: !!updatedUser.analysis,
-            analysisKeys: updatedUser.analysis ? Object.keys(updatedUser.analysis) : [],
-            fullAnalysis: updatedUser.analysis
+            analysisKeys: updatedUser.analysis ? Object.keys(updatedUser.analysis) : []
           })
           
-          // More aggressive change detection - compare against result state instead of currentUser
-          const currentAnalysisString = result ? JSON.stringify(result) : 'null'
-          const newAnalysisString = updatedUser.analysis ? JSON.stringify(updatedUser.analysis) : 'null'
-          const hasNewAnalysis = newAnalysisString !== currentAnalysisString
-          const statusChanged = updatedUser.wordwareCompleted !== currentUser.wordwareCompleted || 
-                               updatedUser.wordwareStarted !== currentUser.wordwareStarted
-          
-          console.log('📡 Change detection:', {
-            hasNewAnalysis,
-            statusChanged,
-            currentAnalysisLength: currentAnalysisString.length,
-            newAnalysisLength: newAnalysisString.length,
-            currentWordwareCompleted: currentUser.wordwareCompleted,
-            newWordwareCompleted: updatedUser.wordwareCompleted
-          })
-          
-          // Always update currentUser state
+          // ALWAYS update currentUser state
           setCurrentUser(updatedUser)
           console.log('📡 Updated currentUser state')
           
-          // Always update steps
+          // ALWAYS update steps
           const newSteps = initializeSteps(updatedUser)
           setSteps(newSteps)
           console.log('📡 Updated steps:', newSteps)
           
-          // Update result and force re-render if there's any analysis data
+          // ALWAYS update result if there's analysis data
           if (updatedUser.analysis) {
             console.log('📡 Setting analysis result from polling:', updatedUser.analysis)
-            // Always create a new object reference and update timestamp
+            // Always create a new object reference to force re-render
             setResult({ ...(updatedUser.analysis as TwitterAnalysis) })
-            setLastUpdateTime(Date.now()) // Always update timestamp to force re-render
-            console.log('📡 Force re-render with new timestamp:', Date.now())
           }
           
-          // Also force update if status changed but no analysis yet
-          if (statusChanged && !updatedUser.analysis) {
-            setLastUpdateTime(Date.now())
-            console.log('📡 Force re-render due to status change:', Date.now())
-          }
+          // ALWAYS force re-render by updating timestamp AND counter
+          const newTimestamp = Date.now()
+          setLastUpdateTime(newTimestamp)
+          setForceRenderCounter(prev => prev + 1)
+          console.log('📡 FORCE RE-RENDER with timestamp:', newTimestamp, 'counter:', forceRenderCounter + 1)
           
           // Stop polling if analysis is completed
           if (updatedUser.wordwareCompleted) {
@@ -162,7 +116,7 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
       } catch (error) {
         console.error('❌ Error polling for updates:', error)
       }
-    }, 2000) // Poll every 2 seconds
+    }, 1000) // Poll every 1 second for aggressive updates
   }
 
   function initializeSteps(user: SelectUser): Steps {
@@ -252,5 +206,5 @@ export const useTwitterAnalysis = (user: SelectUser, disableAnalysis: boolean = 
     setSteps((prev) => ({ ...prev, paidWordwareCompleted: true }))
   }
 
-  return { steps, result, currentUser, lastUpdateTime }
+  return { steps, result, currentUser, lastUpdateTime, forceRenderCounter }
 }
