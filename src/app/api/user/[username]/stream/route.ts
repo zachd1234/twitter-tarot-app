@@ -21,71 +21,99 @@ export async function GET(
       let lastAnalysisHash = ''
       let lastWordwareCompleted = false
       let lastWordwareStarted = false
+      let pollCount = 0
+      let currentInterval = 1000 // Start with 1 second
       
-      const sendUpdate = async () => {
+      const pollForUpdates = async () => {
         try {
           const user = await getUser({ username })
+          
           if (!user) {
+            console.log(`🌊 SSE: User ${username} not found, ending stream`)
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'User not found' })}\n\n`))
+            controller.close()
             return
           }
+
+          // Create a simple hash of the analysis to detect changes
+          const analysisHash = user.analysis ? JSON.stringify(user.analysis).slice(0, 100) : ''
           
-          // Create a hash of the analysis to detect changes
-          const currentAnalysisHash = user.analysis ? JSON.stringify(user.analysis) : ''
-          const statusChanged = (user.wordwareCompleted ?? false) !== lastWordwareCompleted || 
-                               (user.wordwareStarted ?? false) !== lastWordwareStarted
-          
-          // Send update if analysis changed or status changed
-          if (currentAnalysisHash !== lastAnalysisHash || statusChanged) {
+          // Check if there are meaningful changes
+          const hasChanges = 
+            analysisHash !== lastAnalysisHash ||
+            (user.wordwareCompleted ?? false) !== lastWordwareCompleted ||
+            (user.wordwareStarted ?? false) !== lastWordwareStarted
+
+          if (hasChanges) {
             console.log(`🌊 SSE: Sending update for ${username}`, {
-              analysisChanged: currentAnalysisHash !== lastAnalysisHash,
-              statusChanged,
-              wordwareCompleted: user.wordwareCompleted,
               wordwareStarted: user.wordwareStarted,
-              hasAnalysis: !!user.analysis
+              wordwareCompleted: user.wordwareCompleted,
+              hasAnalysis: !!user.analysis,
+              hasProfilePicture: !!user.profilePicture
             })
-            
-            const updateData = {
-              type: 'update',
+
+            // Send the complete user data including profilePicture
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+              type: 'update', 
               user: {
+                id: user.id,
                 username: user.username,
+                name: user.name,
+                profilePicture: user.profilePicture,
+                location: user.location,
                 wordwareStarted: user.wordwareStarted ?? false,
                 wordwareCompleted: user.wordwareCompleted ?? false,
-                analysis: user.analysis,
-                timestamp: Date.now()
+                analysis: user.analysis
               }
-            }
-            
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(updateData)}\n\n`))
-            
+            })}\n\n`))
+
             // Update tracking variables
-            lastAnalysisHash = currentAnalysisHash
+            lastAnalysisHash = analysisHash
             lastWordwareCompleted = user.wordwareCompleted ?? false
             lastWordwareStarted = user.wordwareStarted ?? false
           }
-          
-          // Stop streaming if analysis is completed
-          if ((user.wordwareCompleted ?? false) && user.analysis) {
-            console.log(`🌊 SSE: Analysis completed for ${username}, ending stream`)
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'completed', username })}\n\n`))
+
+          pollCount++
+
+          // Terminate if analysis is complete
+          if (user.wordwareCompleted && user.analysis) {
+            console.log(`🌊 SSE: Analysis complete for ${username}, ending stream after ${pollCount} polls`)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'complete', user })}\n\n`))
+            clearInterval(intervalId)
+            controller.close()
+            return
+          }
+
+          // Use adaptive polling - start fast, slow down over time
+          if (pollCount > 10) {
+            clearInterval(intervalId)
+            currentInterval = Math.min(currentInterval * 1.5, 10000) // Max 10 seconds
+            console.log(`🌊 SSE: Slowing down polling to ${currentInterval}ms for ${username}`)
+            intervalId = setInterval(pollForUpdates, currentInterval)
+          }
+
+          // Safety: terminate after 5 minutes to prevent runaway streams
+          if (pollCount > 100) {
+            console.log(`🌊 SSE: Safety termination for ${username} after ${pollCount} polls`)
             clearInterval(intervalId)
             controller.close()
           }
+
         } catch (error) {
-          console.error(`🌊 SSE: Error fetching user ${username}:`, error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Failed to fetch user data' })}\n\n`))
+          console.error(`🌊 SSE: Error polling for ${username}:`, error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Polling error' })}\n\n`))
         }
       }
       
       // Send initial update
-      sendUpdate()
+      pollForUpdates()
       
       // Set up polling interval
-      intervalId = setInterval(sendUpdate, 1000) // Check every second
+      intervalId = setInterval(pollForUpdates, currentInterval)
       
       // Cleanup function
       request.signal.addEventListener('abort', () => {
-        console.log(`🌊 SSE: Client disconnected for ${username}`)
+        console.log(`🌊 SSE: Client disconnected for ${username} after ${pollCount} polls`)
         clearInterval(intervalId)
         controller.close()
       })
